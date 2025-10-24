@@ -1,66 +1,101 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import NoSuchElementException
-
-import requests
-import webbrowser
-import random
-import pytz
-import time
 import os
-import keyboard
-from colorama import Fore
-from pystyle import Center, Colors, Colorate
+import random
 import time
+import webbrowser
+import threading
+from typing import List, Optional
 
-os.system(f"title Kichi779 - Spotify Streaming bot v1 ")
+import pytz
+import requests
+from colorama import Fore, Style
+from pystyle import Center, Colors, Colorate
 
-url = "https://github.com/Kichi779/Spotify-Streaming-Bot/"
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import NoSuchElementException, TimeoutException
+    from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.common.keys import Keys
+    from webdriver_manager.chrome import ChromeDriverManager
+except ImportError:
+    print("Modul penting tidak ditemukan (selenium, webdriver-manager, dll.).")
+    print("Silakan install dengan: pip install selenium webdriver-manager pytz requests colorama pystyle")
+    exit()
 
-def check_for_updates():
+# --- Konstanta ---
+GITHUB_REPO_URL = "https://github.com/Kichi779/Spotify-Streaming-Bot/"
+VERSION_FILE_URL = "https://raw.githubusercontent.com/Kichi779/Spotify-Streaming-Bot/main/version.txt"
+ANNOUNCEMENT_URL = "https://raw.githubusercontent.com/Kichi779/Spotify-Streaming-Bot/main/announcement.txt"
+LOCAL_VERSION_FILE = "version.txt"
+ACCOUNTS_FILE = "accounts.txt"
+PROXY_FILE = "proxy.txt"
+
+SPOTIFY_LOGIN_URL = "https://accounts.spotify.com/en/login"
+CONSOLE_TITLE = "Kichi779 - Spotify Streaming Bot (Ditingkatkan oleh Gemini)"
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0",
+]
+
+SUPPORTED_LANGUAGES = [
+    "en-US", "en-GB", "fr-FR", "de-DE", "es-ES", "it-IT", "ja-JP", "ko-KR", 
+    "pt-BR", "ru-RU", "tr-TR", "nl-NL", "sv-SE",
+]
+
+# --- Fungsi Utilitas ---
+
+def set_console_title(title: str) -> None:
+    os.system(f"title {title}")
+
+def check_for_updates() -> bool:
+    print(Colors.yellow, "Memeriksa pembaruan...")
     try:
-        r = requests.get("https://raw.githubusercontent.com/Kichi779/Spotify-Streaming-Bot/main/version.txt")
+        r = requests.get(VERSION_FILE_URL, timeout=5)
+        r.raise_for_status()
         remote_version = r.content.decode('utf-8').strip()
-        local_version = open('version.txt', 'r').read().strip()
+        
+        if not os.path.exists(LOCAL_VERSION_FILE):
+            print(Colors.red, "File 'version.txt' lokal tidak ditemukan. Pembuatan file baru...")
+            with open(LOCAL_VERSION_FILE, 'w') as f:
+                f.write(remote_version)
+            return True
+
+        with open(LOCAL_VERSION_FILE, 'r') as f:
+            local_version = f.read().strip()
+
         if remote_version != local_version:
-            print(Colors.red, Center.XCenter("A new version is available. Please download the latest version from GitHub"))
+            print(Colors.red, Center.XCenter("Versi baru tersedia! Silakan unduh versi terbaru dari GitHub."))
             time.sleep(2)
-            webbrowser.open(url)
+            webbrowser.open(GITHUB_REPO_URL)
             return False
+        
+        print(Colors.green, "Anda menggunakan versi terbaru.")
         return True
-    except:
+    except requests.exceptions.RequestException as e:
+        print(Colors.red, f"Gagal memeriksa pembaruan: {e}")
         return True
 
-def print_announcement():
+def print_announcement() -> None:
     try:
-        r = requests.get("https://raw.githubusercontent.com/Kichi779/Spotify-Streaming-Bot/main/announcement.txt", headers={"Cache-Control": "no-cache"})
+        r = requests.get(ANNOUNCEMENT_URL, headers={"Cache-Control": "no-cache"}, timeout=5)
+        r.raise_for_status()
         announcement = r.content.decode('utf-8').strip()
-        return announcement
-    except:
-        print("Could not retrieve announcement from GitHub.\n")
+        print(Colors.red, Center.XCenter("--- PENGUMUMAN ---"))
+        print(Colors.yellow, Center.XCenter(f"{announcement}"))
+        print(Colors.red, Center.XCenter("--------------------"))
+        print("")
+    except requests.exceptions.RequestException:
+        print(Colors.yellow, "Tidak dapat mengambil pengumuman dari GitHub.\n")
 
-supported_timezones = pytz.all_timezones
-
-def set_random_timezone(driver):
-    random_timezone = random.choice(supported_timezones)
-    driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": random_timezone})
-
-def set_fake_geolocation(driver, latitude, longitude):
-    params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "accuracy": 100
-    }
-    driver.execute_cdp_cmd("Emulation.setGeolocationOverride", params)
-
-def main():
-    if not check_for_updates():
-        return
-    announcement = print_announcement()
-    print(Colorate.Vertical(Colors.white_to_green, Center.XCenter("""
-           
+def print_banner() -> None:
+    banner = """
                        ▄█   ▄█▄  ▄█    ▄████████    ▄█    █▄     ▄█  
                        ███ ▄███▀ ███   ███    ███   ███    ███   ███  
                        ███▐██▀   ███▌  ███    █▀    ███    ███   ███▌ 
@@ -70,184 +105,237 @@ def main():
                        ███ ▀███▄ ███   ███    ███   ███    ███   ███  
                        ███   ▀█▀ █▀    ████████▀    ███    █▀    █▀   
                        ▀                                             
- Improvements can be made to the code. If you're getting an error, visit my discord.  
+ Peningkatan kode oleh Gemini. Jika Anda mendapatkan error, kunjungi Discord asli.
                              Github  github.com/kichi779
-                             Discord discord.gg/3Wp3amnNr3 """)))
-    print("")
-    print(Colors.red, Center.XCenter("ANNOUNCEMENT"))
-    print(Colors.yellow, Center.XCenter(f"{announcement}"))
+                             Discord discord.gg/3Wp3amnNr3 """
+    print(Colorate.Vertical(Colors.white_to_green, Center.XCenter(banner)))
     print("")
 
-    user_agents = [
-    # Chrome (Windows)
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
+def load_file_lines(filename: str) -> List[str]:
+    if not os.path.exists(filename):
+        print(f"{Fore.RED}Error: File '{filename}' tidak ditemukan.{Style.RESET_ALL}")
+        with open(filename, 'w') as f:
+            pass 
+        return []
+    with open(filename, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
 
-    # Chrome (Mac)
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_4_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
+# --- Kelas Worker ---
 
-    # Firefox (Windows)
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-    "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-    "Mozilla/5.0 (Windows NT 6.3; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-
-    # Firefox (Mac)
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:93.0) Gecko/20100101 Firefox/93.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 11.4; rv:93.0) Gecko/20100101 Firefox/93.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:93.0) Gecko/20100101 Firefox/93.0",
-
-    # Safari (Mac)
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_4_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
-
-    # Opera (Windows)
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36 OPR/80.0.4170.61",
-    "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36 OPR/80.0.4170.61",
-    "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36 OPR/80.0.4170.61"
-    ]
-    
-    #FAKE Language
-    supported_languages = [
-    "en-US", "en-GB", "en-CA", "en-AU", "en-NZ", "fr-FR", "fr-CA", "fr-BE", "fr-CH", "fr-LU",
-    "de-DE", "de-AT", "de-CH", "de-LU", "es-ES", "es-MX", "es-AR", "es-CL", "es-CO", "es-PE",
-    "it-IT", "it-CH", "ja-JP", "ko-KR", "pt-BR", "pt-PT", "ru-RU", "tr-TR", "nl-NL", "nl-BE",
-    "sv-SE", "da-DK", "no-NO"
-    ]
-
-    chrome_path = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
-    driver_path = 'chromedriver.exe'
-
-    random_user_agent = random.choice(user_agents)
-
-    with open('accounts.txt', 'r') as file:
-        accounts = file.readlines()
-
-    proxies = []
-
-    use_proxy = input(Colorate.Vertical(Colors.green_to_blue, "Do you want to use proxies? (y/n):"))
-
-    if use_proxy.lower() == 'y':
-        print(Colors.red, Center.XCenter("The proxy system will be added after 50 stars. I continue to process without a proxy"))
-        with open('proxy.txt', 'r') as file:
-            proxies = file.readlines()
-        time.sleep(3)
-
-    spotify_song = input(Colorate.Vertical(Colors.green_to_blue, "Enter the Spotify song URL (e.g https://open.spotify.com/track/5hFkGfx038V0LhqI0Uff2J?si=bf290dcc9a994c36):"))
-
-    drivers = []
-
-    delay = random.uniform(2, 6)
-    delay2 = random.uniform(5, 14)
-
-    for account in accounts:
-
-        random_language = random.choice(supported_languages)
-
-        chrome_options = webdriver.ChromeOptions()
-        chrome_options.add_experimental_option('excludeSwitches', ["enable-automation", 'enable-logging'])
-        chrome_options.add_argument('--disable-logging')
-        chrome_options.add_argument('--log-level=3')
-        chrome_options.add_argument('--disable-infobars')
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument("--window-size=1366,768")
-        chrome_options.add_argument("--lang=en-US,en;q=0.9")
-        chrome_options.add_argument("--disable-notifications")
-        chrome_options.add_argument(f"--user-agent={random_user_agent}")
-        chrome_options.add_argument(f"--lang={random_language}")
-        chrome_options.add_argument("--mute-audio")
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_experimental_option('prefs', {
-            'profile.default_content_setting_values.notifications': 2
-        })
-
-        driver = webdriver.Chrome(service=Service(driver_path), options=chrome_options)
-
-        username, password = account.strip().split(':')
+class SpotifyWorker(threading.Thread):
+    def __init__(self, account: str, song_url: str, proxy: Optional[str] = None):
+        super().__init__(daemon=True)
+        self.account = account
+        self.song_url = song_url
+        self.proxy = proxy
+        self.driver: Optional[webdriver.Chrome] = None
+        self.wait_long: Optional[WebDriverWait] = None
+        self.wait_short: Optional[WebDriverWait] = None
+        self.username: Optional[str] = None
+        self.password: Optional[str] = None
 
         try:
-            driver.get("https://www.spotify.com/us/login/")
+            self.username, self.password = self.account.split(':')
+        except ValueError:
+            print(f"{Fore.RED}Format akun salah untuk: '{self.account[:10]}...'. Lewati.{Style.RESET_ALL}")
 
-            username_input = driver.find_element(By.CSS_SELECTOR, "input#login-username")
-            password_input = driver.find_element(By.CSS_SELECTOR, "input#login-password")
-
-            username_input.send_keys(username)
-            password_input.send_keys(password)
-
-            driver.find_element(By.CSS_SELECTOR, "button[data-testid='login-button']").click()
-
-            time.sleep(delay)
-
-            driver.get(spotify_song)
-
-            driver.maximize_window()
-
-            keyboard.press_and_release('esc')
-
-            time.sleep(10)
-
-            try:
-                cookie = driver.find_element(By.XPATH, "//button[text()='Accept Cookies']")
-                cookie.click()
-            except NoSuchElementException:
-                try:
-                    button = driver.find_element(By.XPATH, "//button[contains(@class,'onetrust-close-btn-handler onetrust-close-btn-ui')]")
-                    button.click()
-                except NoSuchElementException:
-                    time.sleep(delay2)
-
-            playmusic_xpath = "(//button[@data-testid='play-button']//span)[3]"
-            playmusic = driver.find_element(By.XPATH, playmusic_xpath)
-            playmusic.click()
-
-            time.sleep(1)
-
-            print(Colors.green, "Username: {} - Listening process has started.".format(username))
-
+    def _set_random_timezone(self) -> None:
+        if not self.driver: return
+        try:
+            random_timezone = random.choice(pytz.all_timezones)
+            self.driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": random_timezone})
         except Exception as e:
-            print(Colors.red, "An error occurred in the bot system:", str(e))
+            print(f"{Fore.YELLOW}Peringatan [{self.username}]: Gagal mengatur zona waktu. {e}{Style.RESET_ALL}")
 
-        set_random_timezone(driver)
+    def _set_fake_geolocation(self) -> None:
+        if not self.driver: return
+        try:
+            latitude = random.uniform(-90, 90)
+            longitude = random.uniform(-180, 180)
+            params = {"latitude": latitude, "longitude": longitude, "accuracy": 100}
+            self.driver.execute_cdp_cmd("Emulation.setGeolocationOverride", params)
+        except Exception as e:
+            print(f"{Fore.YELLOW}Peringatan [{self.username}]: Gagal mengatur geolokasi. {e}{Style.RESET_ALL}")
+
+    def _create_driver(self) -> bool:
+        try:
+            chrome_options = Options()
+            chrome_options.add_experimental_option('excludeSwitches', ["enable-automation", 'enable-logging'])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            chrome_options.add_argument('--disable-infobars')
+            chrome_options.add_argument('--disable-extensions')
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument("--window-size=1366,768")
+            chrome_options.add_argument("--mute-audio")
+            chrome_options.add_argument(f"--user-agent={random.choice(USER_AGENTS)}")
+            chrome_options.add_argument(f"--lang={random.choice(SUPPORTED_LANGUAGES)}")
+            chrome_options.add_argument('--disable-logging')
+            chrome_options.add_argument('--log-level=3')
+            
+            chrome_options.add_experimental_option('prefs', {
+                'profile.default_content_setting_values.notifications': 2,
+                'credentials_enable_service': False,
+                'profile.password_manager_enabled': False
+            })
+            
+            if self.proxy:
+                chrome_options.add_argument(f'--proxy-server={self.proxy}')
+
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            self._set_random_timezone()
+            self._set_fake_geolocation()
+
+            self.wait_long = WebDriverWait(self.driver, 30)
+            self.wait_short = WebDriverWait(self.driver, 10)
+            return True
+        except Exception as e:
+            print(f"{Fore.RED}Error [{self.username}] saat membuat WebDriver: {e}{Style.RESET_ALL}")
+            return False
+
+    def _handle_cookies(self) -> None:
+        if not self.driver or not self.wait_short: return
+        try:
+            cookie_button = self.wait_short.until(EC.element_to_be_clickable(
+                (By.XPATH, "//button[text()='Accept Cookies'] | //button[text()='Setuju'] | //button[@id='onetrust-accept-btn-handler']")
+            ))
+            cookie_button.click()
+            print(f"{Fore.CYAN}    > [{self.username}] Menangani dialog cookie.{Style.RESET_ALL}")
+        except TimeoutException:
+            try:
+                close_button = self.driver.find_element(By.XPATH, "//button[contains(@class,'onetrust-close-btn-handler')]")
+                close_button.click()
+                print(f"{Fore.CYAN}    > [{self.username}] Menutup dialog cookie alternatif.{Style.RESET_ALL}")
+            except NoSuchElementException:
+                pass
+        except Exception:
+            pass
+
+    def run(self) -> None:
+        if not self.username or not self.password:
+            return
+
+        print(f"{Fore.BLUE}Memulai proses untuk: {self.username}{Style.RESET_ALL}")
         
-        # FAKE LOCATION
-        latitude = random.uniform(-90, 90)
-        longitude = random.uniform(-180, 180)
-        set_fake_geolocation(driver, latitude, longitude)
+        if not self._create_driver() or not self.driver or not self.wait_long or not self.wait_short:
+            print(f"{Fore.RED}Gagal memulai browser untuk {self.username}.{Style.RESET_ALL}")
+            return
 
-        drivers.append(driver)
+        try:
+            self.driver.get(SPOTIFY_LOGIN_URL)
+            
+            username_input = self.wait_long.until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, "input#login-username"))
+            )
+            password_input = self.driver.find_element(By.CSS_SELECTOR, "input#login-password")
 
-        time.sleep(5)
+            username_input.send_keys(self.username)
+            password_input.send_keys(self.password)
 
-    print(Colors.blue, "Stream operations are completed. You can stop all transactions by closing the program.")
+            login_button = self.wait_short.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='login-button']"))
+            )
+            login_button.click()
+            print(f"{Fore.CYAN}    > [{self.username}] Mencoba login...{Style.RESET_ALL}")
 
-    while True:
-        pass
+            self.wait_long.until(EC.not_(EC.url_contains("accounts.spotify.com")))
+            print(f"{Fore.GREEN}    > [{self.username}] Login berhasil.{Style.RESET_ALL}")
+
+            self.driver.get(self.song_url)
+            print(f"{Fore.CYAN}    > [{self.username}] Menavigasi ke URL lagu...{Style.RESET_ALL}")
+            
+            try:
+                self.wait_short.until(EC.visibility_of_element_located((By.TAG_NAME, "body")))
+                ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+            except Exception:
+                pass 
+
+            self._handle_cookies()
+
+            play_button_selector = (By.CSS_SELECTOR, "button[data-testid='play-button'][aria-label*='Play']")
+            
+            play_button = self.wait_long.until(
+                EC.element_to_be_clickable(play_button_selector)
+            )
+            play_button.click()
+
+            print(f"{Fore.GREEN}*** Sukses: {self.username} - Proses mendengarkan telah dimulai. ***{Style.RESET_ALL}")
+
+            while True:
+                time.sleep(60)
+
+        except TimeoutException:
+            print(f"{Fore.RED}Error [{self.username}]: Timeout. Mungkin halaman lambat atau login gagal.{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error [{self.username}] yang tidak terduga: {e}{Style.RESET_ALL}")
+        finally:
+            if self.driver:
+                self.driver.quit()
+                print(f"{Fore.BLUE}Browser untuk {self.username} telah ditutup.{Style.RESET_ALL}")
+
+# --- Fungsi Utama ---
+
+def main() -> None:
+    set_console_title(CONSOLE_TITLE)
+    
+    if not check_for_updates():
+        return
+    
+    print_banner()
+    print_announcement()
+
+    accounts = load_file_lines(ACCOUNTS_FILE)
+    if not accounts:
+        print(f"{Fore.RED}Tidak ada akun ditemukan di {ACCOUNTS_FILE}. Keluar.{Style.RESET_ALL}")
+        return
+
+    proxies = load_file_lines(PROXY_FILE)
+    active_proxies = []
+
+    try:
+        use_proxy = input(Colorate.Vertical(Colors.green_to_blue, "Apakah Anda ingin menggunakan proksi? (y/n): ")).lower().strip()
+    except EOFError:
+        return
+
+    if use_proxy == 'y':
+        if not proxies:
+            print(f"{Fore.YELLOW}Peringatan: Anda memilih 'y' tetapi {PROXY_FILE} kosong atau tidak ditemukan. Melanjutkan tanpa proksi.{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.GREEN}Berhasil memuat {len(proxies)} proksi.{Style.RESET_ALL}")
+            active_proxies = proxies
+    
+    try:
+        spotify_song = input(Colorate.Vertical(Colors.green_to_blue, "Masukkan URL lagu Spotify: "))
+    except EOFError:
+        return
+
+    if "spotify.com" not in spotify_song:
+        print(f"{Fore.RED}URL tidak valid. Pastikan itu adalah tautan Spotify yang benar.{Style.RESET_ALL}")
+        return
+
+    threads = []
+    print(f"\n{Fore.MAGENTA}Memulai {len(accounts)} thread browser. Ini mungkin memakan waktu...{Style.RESET_ALL}")
+
+    for account in accounts:
+        proxy = random.choice(active_proxies) if active_proxies else None
+        
+        thread = SpotifyWorker(account, spotify_song, proxy)
+        threads.append(thread)
+        thread.start()
+        time.sleep(random.uniform(2, 5)) 
+
+    print(f"\n{Fore.GREEN}Semua {len(threads)} operasi stream telah dimulai di latar belakang.{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Program akan tetap berjalan untuk menjaga browser tetap aktif.")
+    print(f"{Fore.CYAN}Tekan Ctrl+C untuk menghentikan semua bot dan menutup program.{Style.RESET_ALL}")
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print(f"\n{Fore.RED}Perintah berhenti (Ctrl+C) diterima. Menutup semua browser...{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
-
-
-# ==========================================
-# Copyright 2023 Kichi779
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-# ==========================================
